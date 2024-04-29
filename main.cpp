@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <sstream>
 
 using namespace std;
 
@@ -56,8 +57,8 @@ public:
 
         int pixelVal;
 
-        for (int i = 1; i < numRows; i++) {
-            for (int j = 1; j < numCols; j++) {
+        for (int i = 1; i < numRows + 1; i++) {
+            for (int j = 1; j < numCols + 1; j++) {
                 if (labelFile >> pixelVal) {
                     imgAry[i][j] = pixelVal;
                 }
@@ -66,11 +67,11 @@ public:
     }
 
     void reformatPrettyPrint(int** inAry, ofstream& outFile1){
-        outFile1 << numRows << numCols << minVal << maxVal << endl;
+        outFile1 << numRows << " " << numCols << " " << minVal << " " << maxVal << endl;
         string str = to_string(maxVal);
         int width = str.length();
-        for(int i = 0; i < numRows; i++){
-            for(int j = 0; j < numCols; j++){
+        for(int i = 2; i < numRows; i++){
+            for(int j = 2; j < numCols; j++){
                 if(inAry[i][j] > 0){
                     outFile1 << inAry[i][j];
                 } else {
@@ -93,9 +94,9 @@ public:
         CCAry = new int*[numRows + 2];
 
         for (int i = 0; i < numRows + 2; ++i) {
-            imgAry[i] = new int[numCols + 2]{};
-            boundaryAry[i] = new int[numCols + 2]{};
-            CCAry[i] = new int[numCols + 2]{};
+            imgAry[i] = new int[numCols + 2];
+            boundaryAry[i] = new int[numCols + 2];
+            CCAry[i] = new int[numCols + 2];
         }
     }
 
@@ -145,7 +146,7 @@ public:
 
     void getChainCode(ofstream& chainCodeFile, ofstream& debugFile) {
         debugFile << "entering getChainCode method" << endl;
-        chainCodeFile << numRows << " " << numCols << " " << minVal << " " << maxVal;
+        chainCodeFile << numRows << " " << numCols << " " << minVal << " " << maxVal << endl;
         int label = CC.label;
 
         for (int i = 1; i <= numRows; i++) {
@@ -209,8 +210,66 @@ public:
         return chainDir;
     }
 
-    void constructBoundary() {
-        // Implementation needed
+    void constructBoundary(ifstream& chainCodeFile) {
+        string header;
+        getline(chainCodeFile, header);  // Skip the header
+
+        int startRow, startCol, label;
+        while (chainCodeFile >> startRow >> startCol >> label) {
+            chainCodeFile.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Clear to end of line
+
+            if (startRow < 1 || startRow > numRows || startCol < 1 || startCol > numCols) {
+                cerr << "Invalid start position: startRow = " << startRow << ", startCol = " << startCol << endl;
+                continue;
+            }
+
+            for (int i = 0; i < numRows + 2; i++) {
+                fill(boundaryAry[i], boundaryAry[i] + numCols + 2, 0);
+            }
+
+            boundaryAry[startRow][startCol] = label;
+
+            point current = {startRow, startCol};
+
+            string directions;
+            getline(chainCodeFile, directions);
+            stringstream ss(directions);
+
+            int dir;
+            while (ss >> dir) {
+                current.row += coordOffset[dir].row;
+                current.col += coordOffset[dir].col;
+
+                // Check bounds before marking boundary point
+                if (current.row >= 1 && current.row <= numRows && current.col >= 1 && current.col <= numCols) {
+                    boundaryAry[current.row][current.col] = label;
+                } else {
+                    cerr << "Out of bounds access during chain traversal: row = " << current.row << ", col = " << current.col << endl;
+                }
+            }
+        }
+    }
+
+    void imgReformat(ofstream& boundaryFile){
+        boundaryFile << numRows << " " << numCols << " " << minVal << " " << maxVal << endl;
+        string str = to_string(maxVal);
+        int width = str.length();
+        for(int i = 0; i < numRows; i++){
+            for(int j = 0; j < numCols; j++){
+                if(boundaryAry[i][j] > 0){
+                    boundaryFile << boundaryAry[i][j];
+                } else {
+                    boundaryFile << '0';
+                }
+                string str2 = to_string(boundaryAry[i][j]);
+                int WW = str2.length();
+                while (WW <= width){
+                    boundaryFile << " ";
+                    WW++;
+                }
+            }
+            boundaryFile << endl;
+        }
     }
 };
 
@@ -252,11 +311,11 @@ int main (int argc, char* argv[]){
     }
 
     chainCodeFile.close();
-    chainCodeFile.open(argv[5], std::ios::out | std::ios::app);
+    ifstream chainCodeFile2(argv[5]);
 
-    chainCode.constructBoundary(chainCodeFile);
+    chainCode.constructBoundary(chainCodeFile2);
     chainCode.reformatPrettyPrint(chainCode.boundaryAry, outFile1);
-    chainCode.imgReformat();
+    chainCode.imgReformat(boundaryFile);
 
     labelFile.close();
     propFile.close();
@@ -264,5 +323,4 @@ int main (int argc, char* argv[]){
     debugFile.close();
     chainCodeFile.close();
     boundaryFile.close();
-
 }
